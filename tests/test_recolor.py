@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from aquarelab.recolor import assign_by_luminance, recolor
+from aquarelab.recolor import (
+    assign_by_luminance,
+    normalize_hex,
+    parse_hex_colors,
+    recolor,
+)
 
 
 def _palette(luminances):
@@ -63,3 +68,27 @@ def test_raises_when_no_tone_is_alive():
     new = _palette([10, 90])
     with pytest.raises(ValueError):
         assign_by_luminance(old, new, usage=np.array([0.0, 0.0]))
+
+
+@pytest.mark.parametrize(
+    "color, expected",
+    [
+        ("#2A9D8F", "#2a9d8f"),
+        ("2a9d8f", "#2a9d8f"),
+        ("#abc", "#aabbcc"),
+        ("rgb(42, 157, 143)", "#2a9d8f"),
+        ("rgba(42, 157, 143, 1)", "#2a9d8f"),
+    ],
+)
+def test_normalize_hex_accepts_common_formats(color, expected):
+    assert normalize_hex(color) == expected
+
+
+def test_normalize_hex_rejects_invalid_colors():
+    with pytest.raises(ValueError):
+        normalize_hex("blue")
+
+
+def test_parse_hex_colors_finds_colors_in_any_text():
+    text = "#264653, 2a9d8f\n#E9C46A and f4a261"
+    assert parse_hex_colors(text) == ["#264653", "#2a9d8f", "#e9c46a", "#f4a261"]

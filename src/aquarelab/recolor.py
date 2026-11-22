@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 from skimage import color
 
@@ -21,6 +23,36 @@ def hex_to_lab(hex_colors: list[str]) -> np.ndarray:
         ]
     )
     return color.rgb2lab(rgb[np.newaxis])[0]
+
+
+def lab_to_hex(color_lab: np.ndarray) -> str:
+    """One Lab color -> hex string like '#2a9d8f'."""
+    rgb = lab_to_rgb(np.asarray(color_lab, dtype=float)[None, None, :])[0, 0]
+    return "#" + "".join(f"{round(c * 255):02x}" for c in rgb)
+
+
+def normalize_hex(color: str) -> str:
+    """
+    Turn a color string into '#rrggbb'.
+    Accepts '#rrggbb', '#rgb', 'rrggbb', 'rgb(r, g, b)' and 'rgba(r, g, b, a)'.
+    """
+    value = color.strip().lower()
+    if value.startswith("rgb"):
+        numbers = re.findall(r"[\d.]+", value)
+        if len(numbers) >= 3:
+            channels = [min(255, max(0, round(float(n)))) for n in numbers[:3]]
+            return "#" + "".join(f"{c:02x}" for c in channels)
+    digits = value.lstrip("#")
+    if re.fullmatch(r"[0-9a-f]{3}", digits):
+        digits = "".join(c * 2 for c in digits)
+    if re.fullmatch(r"[0-9a-f]{6}", digits):
+        return "#" + digits
+    raise ValueError(f"Not a color: {color!r}")
+
+
+def parse_hex_colors(text: str) -> list[str]:
+    """Find every 6-digit hex color in a text, with or without '#', in order."""
+    return [normalize_hex(match) for match in re.findall(r"#?\b[0-9a-fA-F]{6}\b", text)]
 
 
 def assign_by_luminance(
