@@ -1,0 +1,44 @@
+# Base configuration for PaletteNet training.
+# Paths are relative to the project root. Override any value from the command
+# line with --set section.key=value.
+
+[run]
+name = "base"
+seed = 0
+device = "auto"            # "auto", "cuda" or "cpu"
+
+[data]
+train_root = "datasets/coco/train2017_320"
+val_root = "datasets/coco/val2017"
+max_train_images = 0       # 0 = use every image in train_root
+val_images = 256
+image_size = 256
+batch_size = 32
+num_workers = 6
+
+[model]
+num_tones = 8
+backbone = "resnet34"
+
+[loss]
+entropy_weight = 0.01
+floor_weight = 1.0
+min_usage = 0.02           # floor on tone usage, averaged over the batch
+
+[optim]
+lr = 1e-3
+steps = 10000
+amp = true                 # bfloat16 mixed precision, GPU only
+
+[log]
+log_every = 50
+eval_every = 1000
+save_every = 2000
+dead_threshold = 0.01      # a tone owning less than 1% of the pixels is unused
+preview_images = 4
+test_image = "notebooks/data/florest.jpg"
+
+preview_palette = [
+  "#264653", "#2a9d8f", "#8ab17d", "#e9c46a",
+  "#f4a261", "#e76f51", "#b56576", "#6d597a",
+]

@@ -1,0 +1,40 @@
+[project]
+name = "aquarelab"
+version = "0.1.0"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "numpy",
+  "scikit-image",
+  "scikit-learn",
+  "pillow",
+  "matplotlib",
+  "torch>=2.14,<2.15",
+  "torchvision>=0.24",
+  "timm>=1.0.31",
+  "kornia>=0.9.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "jupyter",
+    "python-dotenv>=1.2.4",
+    "tensorboard>=2.21.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
