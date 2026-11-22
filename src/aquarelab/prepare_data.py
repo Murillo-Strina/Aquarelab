@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from aquarelab.data import IMAGE_EXTENSIONS
+from aquarelab.constants import IMAGE_EXTENSIONS
 
 
 def resize_one(task: tuple[Path, Path, int, int]) -> str:
