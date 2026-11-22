@@ -1,70 +1,72 @@
 # Aquarelab
 
-Laboratório que adapta paletas de cores em qualquer imagem usando redes neurais convolucionais.
+A lab that adapts color palettes on any image using convolutional neural networks.
 
-Envie uma foto e o Aquarelab identifica os tons principais da imagem, separa cada região pelo que ela representa e mostra a paleta resultante. Em seguida, envie uma paleta nova com o mesmo número de cores e receba a foto recolorida, com luz, sombra e textura da original preservadas.
+Upload a photo and Aquarelab identifies its main tones, separates each region by what it represents and shows the resulting palette. Then upload a new palette with the same number of colors and get the photo recolored, with the original's light, shadow and texture preserved.
 
-> Status: em desenvolvimento (v1)
+> Status: in development (v1)
 
-## O problema
+## The problem
 
-Editores de cor tradicionais agrupam pixels apenas por semelhança de tom. Se uma foto tem uma camisa azul e um céu azul, os dois caem na mesma cor da paleta, e trocar uma muda a outra junto.
+Traditional color editors group pixels by color similarity alone. If a photo has a blue shirt and a blue sky, both fall into the same palette color, and changing one changes the other too.
 
-O Aquarelab agrupa pixels pelo que eles representam, não só pela cor que têm. Céu, pele, vegetação e roupa podem ganhar cores diferentes, mesmo quando compartilham o mesmo tom na foto original.
+Aquarelab groups pixels by what they represent, not only by the color they have. Sky, skin, vegetation and clothing can receive different colors, even when they share the same tone in the original photo.
 
-## Como funciona
+## How it works
 
-1. O usuário envia uma foto colorida.
-2. A rede identifica os tons principais da imagem, até um máximo de 8, e mapeia quais regiões pertencem a cada tom.
-3. A paleta extraída é exibida.
-4. O usuário envia uma paleta nova com a mesma quantidade de cores.
-5. Cada cor nova é atribuída a um tom original, do mais escuro para o mais claro, preservando o contraste da imagem.
-6. A foto é recolorida na hora.
+1. The user uploads a color photo.
+2. The network identifies the main tones of the image, up to a maximum of 8, and maps which regions belong to each tone.
+3. The extracted palette is displayed.
+4. The user uploads a new palette with the same number of colors.
+5. Each new color is assigned to an original tone, from darkest to brightest, preserving the image's contrast.
+6. The photo is recolored instantly.
 
-## A ideia por trás do modelo
+## The idea behind the model
 
-A rede não pinta a imagem. Ela entende a imagem e entrega duas saídas:
+The network does not paint the image. It understands the image and produces two outputs:
 
-- os tons principais da foto, deixando de fora os que não são relevantes;
-- um mapa indicando o quanto cada pixel pertence a cada tom.
+- the main tones of the photo, leaving out the ones that are not relevant;
+- a map showing how much each pixel belongs to each tone.
 
-A recoloração é feita sobre esse mapa. Em vez de substituir a cor de cada pixel pela cor nova, o Aquarelab aplica um deslocamento: se um tom azul virou vermelho, cada pixel daquela região recebe o mesmo deslocamento de cor, proporcional ao quanto pertence a ela. Assim, sombras, brilhos e texturas continuam no lugar, e a foto final parece a mesma foto pintada com outras cores.
+Recoloring is done on top of that map. Instead of replacing each pixel's color with the new one, Aquarelab applies a shift: if a blue tone became red, every pixel in that region receives the same color shift, proportional to how much it belongs to it. This keeps shadows, highlights and textures in place, and the final image looks like the same photo painted with different colors.
 
-Essa separação traz três vantagens:
+This separation brings three advantages:
 
-- A preservação de luz e sombra é garantida pela conta, não depende da rede acertar.
-- Trocar a paleta é instantâneo, porque a rede não precisa rodar de novo.
-- Cada cor nova altera apenas as regiões ligadas ao tom que ela substitui.
+- Preserving light and shadow is guaranteed by the math, not by the network getting it right.
+- Changing the palette is instant, because the network does not need to run again.
+- Each new color only changes the regions linked to the tone it replaces.
 
-Para separar regiões pelo significado, e não só pela cor, a rede parte de uma base pré-treinada que já reconhece objetos e texturas.
+To separate regions by meaning, and not only by color, the network starts from a pretrained backbone that already recognizes objects and textures.
 
-## Treinamento
+## Training
 
-O treino não usa nenhum rótulo manual. A rede aprende tentando reconstruir a foto original usando apenas a paleta e o mapa que ela mesma gerou. Ela é recompensada por reconstruções fiéis que usem poucos tons e regiões bem definidas. Qualquer base grande de fotos coloridas públicas serve como dado de treino.
+Training uses no manual labels. The network learns by trying to rebuild the original photo using only the palette and the map it generated itself. It is rewarded for faithful reconstructions that use few tones and well-defined regions. Any large public collection of color photos works as training data.
 
-## Avaliação
+## Evaluation
 
-A rede é comparada com um método clássico de extração de paleta que agrupa pixels apenas por cor. O objetivo é mostrar, com exemplos e métricas, em quais situações a rede separa regiões que o método clássico mistura, e onde ela ainda falha.
+The network is compared against a classic palette extraction method that groups pixels by color alone. The goal is to show, with examples and metrics, in which situations the network separates regions that the classic method mixes, and where it still fails.
+
+Experiment history and analysis: see [notebooks/README.md](notebooks/README.md).
 
 ## Roadmap v1
 
-- [ ] Recoloração por deslocamento de cor a partir de um mapa de tons
-- [ ] Atribuição de paleta por ordem de luminosidade
-- [ ] Rede que extrai os tons principais e o mapa de cada região
-- [ ] Treinamento por reconstrução, sem rótulos
-- [ ] Interface para envio da foto e da paleta
-- [ ] Comparação com o método clássico
+- [x] Recoloring by color shift from a tone map
+- [x] Palette assignment by luminance order
+- [ ] Network that extracts the main tones and the map of each region
+- [ ] Training by reconstruction, without labels
+- [ ] Interface to upload the photo and the palette
+- [ ] Comparison with the classic method
 
-## Próximas versões
+## Next versions
 
-- Rede crítica que avalia o quanto uma imagem recolorida parece natural
-- Atribuição automática de cores mais sofisticada que a ordem por luminosidade
-- Suporte a fotos em preto e branco
+- A critic network that evaluates how natural a recolored image looks
+- Automatic color assignment more sophisticated than luminance order
+- Support for black and white photos
 
-## Limitações conhecidas
+## Known limitations
 
-A atribuição por luminosidade preserva o contraste, mas nem sempre produz a combinação que uma pessoa escolheria. Quando a paleta nova é muito diferente da original, algumas regiões podem receber cores pouco naturais, como pele em tons improváveis. A quantidade máxima de 8 tons também simplifica imagens muito complexas.
+Luminance-based assignment preserves contrast, but does not always produce the combination a person would choose. When the new palette is very different from the original, some regions may receive unnatural colors, such as skin in unlikely tones. The maximum of 8 tones also simplifies very complex images.
 
-## Objetivos de aprendizado
+## Learning goals
 
-Este projeto foi criado para aprofundar conhecimentos em redes convolucionais além da classificação de imagens, explorando redes que geram mapas como saída, uso de modelos pré-treinados como base, treinamento sem rótulos e avaliação comparada com métodos clássicos.
+This project was created to deepen knowledge of convolutional networks beyond image classification, exploring networks that produce maps as output, pretrained models as a backbone, training without labels, and evaluation against classic methods.
