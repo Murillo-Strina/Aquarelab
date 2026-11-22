@@ -52,8 +52,8 @@ Experiment history and analysis: see [notebooks/README.md](notebooks/README.md).
 
 - [x] Recoloring by color shift from a tone map
 - [x] Palette assignment by luminance order
-- [ ] Network that extracts the main tones and the map of each region
-- [ ] Training by reconstruction, without labels
+- [x] Network that extracts the main tones and the map of each region
+- [x] Training by reconstruction, without labels
 - [ ] Interface to upload the photo and the palette
 - [ ] Comparison with the classic method
 
@@ -66,6 +66,10 @@ Experiment history and analysis: see [notebooks/README.md](notebooks/README.md).
 ## Known limitations
 
 Luminance-based assignment preserves contrast, but does not always produce the combination a person would choose. When the new palette is very different from the original, some regions may receive unnatural colors, such as skin in unlikely tones. The maximum of 8 tones also simplifies very complex images.
+
+On fine textures such as fur or grass, tones still follow light and dark
+variations within the texture, so recolored textures can look speckled with
+two colors.
 
 ## Learning goals
 
