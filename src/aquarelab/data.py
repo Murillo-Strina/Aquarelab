@@ -6,8 +6,7 @@ from PIL import Image, UnidentifiedImageError
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
-GRAYSCALE_MODES = {"1", "L", "LA", "I", "I;16", "F"}
+from aquarelab.constants import GRAYSCALE_MODES, IMAGE_EXTENSIONS
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
 IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
