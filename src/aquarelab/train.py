@@ -63,15 +63,35 @@ def resolve_device(name: str) -> torch.device:
     return torch.device(name)
 
 
+def resolve_amp_dtype(enabled: bool, device: torch.device) -> torch.dtype | None:
+    """
+    Pick the mixed precision type for this GPU, or None to train in float32.
+
+    bfloat16 needs no loss scaling but is only fast on recent GPUs (Ampere and
+    newer). Older GPUs, such as the T4 on Kaggle, use float16 with a GradScaler.
+    """
+    if not enabled or device.type != "cuda":
+        return None
+    if torch.cuda.is_bf16_supported(including_emulation=False):
+        return torch.bfloat16
+    return torch.float16
+
+
 def infinite(loader):
     """Yield batches forever, reshuffling and re-augmenting at every pass."""
     while True:
         yield from loader
 
 
-def predict(model: PaletteNet, net_input: torch.Tensor, use_amp: bool) -> torch.Tensor:
-    """Run the model, in bfloat16 when use_amp is on. Memberships come back in float32."""
-    with torch.autocast(device_type=net_input.device.type, dtype=torch.bfloat16, enabled=use_amp):
+def predict(
+    model: PaletteNet, net_input: torch.Tensor, amp_dtype: torch.dtype | None
+) -> torch.Tensor:
+    """Run the model, in mixed precision when amp_dtype is set. Memberships come back in float32."""
+    with torch.autocast(
+        device_type=net_input.device.type,
+        dtype=amp_dtype or torch.bfloat16,
+        enabled=amp_dtype is not None,
+    ):
         weights = model(net_input)
     return weights.float()
 
@@ -93,13 +113,13 @@ def compute_losses(lab: torch.Tensor, weights: torch.Tensor, loss_cfg: dict):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, use_amp: bool, threshold: float) -> dict:
+def evaluate(model, loader, device, amp_dtype, threshold: float) -> dict:
     """Reconstruction error and tone usage on images never used in training."""
     model.eval()
     l1_sum, count, owned_all = 0.0, 0, []
     for rgb in loader:
         net_input, lab = prepare_batch(rgb.to(device, non_blocking=True))
-        weights = predict(model, net_input, use_amp)
+        weights = predict(model, net_input, amp_dtype)
         recon = reconstruct(weights, palette_from_weights(lab, weights))
         l1_sum += reconstruction_loss(lab, recon).item() * len(rgb)
         count += len(rgb)
@@ -115,20 +135,24 @@ def evaluate(model, loader, device, use_amp: bool, threshold: float) -> dict:
 
 
 def load_preview_images(paths: list[Path], image_size: int) -> torch.Tensor:
-    transform = transforms.Compose([
-        transforms.Resize(image_size, antialias=True),
-        transforms.CenterCrop(image_size),
-        transforms.ToTensor(),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.Resize(image_size, antialias=True),
+            transforms.CenterCrop(image_size),
+            transforms.ToTensor(),
+        ]
+    )
     return torch.stack([transform(Image.open(p).convert("RGB")) for p in paths])
 
 
 @torch.no_grad()
-def render_previews(model, rgb, device, use_amp, threshold, new_palette) -> torch.Tensor:
+def render_previews(
+    model, rgb, device, amp_dtype, threshold, new_palette
+) -> torch.Tensor:
     """One row per image: original | reconstruction | recolored. Returns (3, H*N, W*3)."""
     model.eval()
     net_input, lab = prepare_batch(rgb.to(device))
-    weights = predict(model, net_input, use_amp)
+    weights = predict(model, net_input, amp_dtype)
     palette = palette_from_weights(lab, weights)
     recon = reconstruct(weights, palette)
     owned = tone_ownership(weights).cpu().numpy()
@@ -197,12 +221,16 @@ def main():
     writer.add_text("config", f"```\n{json.dumps(cfg, indent=2)}\n```")
 
     device = resolve_device(run_cfg["device"])
-    use_amp = optim_cfg["amp"] and device.type == "cuda"
+    amp_dtype = resolve_amp_dtype(optim_cfg["amp"], device)
+    scaler = torch.amp.GradScaler("cuda", enabled=amp_dtype == torch.float16)
     torch.manual_seed(run_cfg["seed"])
     torch.backends.cudnn.benchmark = True
     threshold = log_cfg["dead_threshold"]
 
-    print(f"Run: {run_name} | device: {device} | mixed precision: {use_amp}")
+    gpu_name = torch.cuda.get_device_name(device) if device.type == "cuda" else "-"
+    print(
+        f"Run: {run_name} | device: {device} ({gpu_name}) | mixed precision: {amp_dtype}"
+    )
     print("Scanning images...")
     train_loader = make_loader(
         data_cfg["train_root"],
@@ -218,10 +246,12 @@ def main():
         batch_size=data_cfg["batch_size"],
         image_size=data_cfg["image_size"],
         train=False,
-        num_workers=data_cfg["num_workers"],
+        num_workers=0,
         max_images=data_cfg["val_images"],
     )
-    preview_paths = find_images(data_cfg["val_root"], max_images=log_cfg["preview_images"])
+    preview_paths = find_images(
+        data_cfg["val_root"], max_images=log_cfg["preview_images"]
+    )
     preview_rgb = load_preview_images(
         preview_paths + [Path(log_cfg["test_image"])], data_cfg["image_size"]
     )
@@ -233,7 +263,9 @@ def main():
     model = PaletteNet(num_tones=model_cfg["num_tones"], backbone=model_cfg["backbone"])
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=optim_cfg["lr"])
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=optim_cfg["steps"])
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=optim_cfg["steps"]
+    )
 
     batches = infinite(train_loader)
     model.train()
@@ -242,17 +274,20 @@ def main():
     for step in range(1, optim_cfg["steps"] + 1):
         rgb = next(batches)
         net_input, lab = prepare_batch(rgb.to(device, non_blocking=True))
-        weights = predict(model, net_input, use_amp)
+        weights = predict(model, net_input, amp_dtype)
         loss, parts = compute_losses(lab, weights, loss_cfg)
 
         optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step()
 
         if step % log_cfg["log_every"] == 0:
             used, unused = tone_stats(weights.detach(), threshold)
-            seconds_per_step = (time.perf_counter() - interval_start) / log_cfg["log_every"]
+            seconds_per_step = (time.perf_counter() - interval_start) / log_cfg[
+                "log_every"
+            ]
             writer.add_scalar("train/total", loss.item(), step)
             for name, value in parts.items():
                 writer.add_scalar(f"train/{name}", value.item(), step)
@@ -263,28 +298,34 @@ def main():
             print(
                 f"step {step:6d} | recon {parts['recon'].item():.4f} "
                 f"| tones per image {used:.1f} | unused in batch {unused} "
-                f"| {seconds_per_step:.3f}s/step"
+                f"| {seconds_per_step:.3f}s/step",
+                flush=True,
             )
             interval_start = time.perf_counter()
 
         if step % log_cfg["eval_every"] == 0 or step == optim_cfg["steps"]:
-            metrics = evaluate(model, val_loader, device, use_amp, threshold)
+            metrics = evaluate(model, val_loader, device, amp_dtype, threshold)
             for name, value in metrics.items():
                 writer.add_scalar(f"val/{name}", value, step)
             writer.add_image(
                 "previews",
-                render_previews(model, preview_rgb, device, use_amp, threshold, new_palette),
+                render_previews(
+                    model, preview_rgb, device, amp_dtype, threshold, new_palette
+                ),
                 step,
             )
             print(
                 f"  val | recon L1 {metrics['recon_l1']:.4f} "
                 f"| tones per image {metrics['tones_per_image']:.1f} "
-                f"| unused tones {metrics['unused_tones']}"
+                f"| unused tones {metrics['unused_tones']}",
+                flush=True,
             )
             interval_start = time.perf_counter()
 
         if step % log_cfg["save_every"] == 0 or step == optim_cfg["steps"]:
-            save_checkpoint(ckpt_dir / f"step_{step:06d}.pt", model, optimizer, scheduler, step, cfg)
+            save_checkpoint(
+                ckpt_dir / f"step_{step:06d}.pt", model, optimizer, scheduler, step, cfg
+            )
             interval_start = time.perf_counter()
 
     if device.type == "cuda":

@@ -44,7 +44,9 @@ def resize_one(task: tuple[Path, Path, int, int]) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Resize a folder of images for training.")
+    parser = argparse.ArgumentParser(
+        description="Resize a folder of images for training."
+    )
     parser.add_argument("src", type=Path, help="Folder with the original images.")
     parser.add_argument("dst", type=Path, help="Folder for the resized images.")
     parser.add_argument("--short-side", type=int, default=320)
@@ -56,7 +58,12 @@ def main():
         p for p in args.src.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS
     )
     tasks = [
-        (p, (args.dst / p.relative_to(args.src)).with_suffix(".jpg"), args.short_side, args.quality)
+        (
+            p,
+            (args.dst / p.relative_to(args.src)).with_suffix(".jpg"),
+            args.short_side,
+            args.quality,
+        )
         for p in sources
     ]
     print(f"Found {len(tasks)} images. Resizing with {args.workers} workers...")
@@ -66,8 +73,10 @@ def main():
         for i, result in enumerate(pool.map(resize_one, tasks, chunksize=64), start=1):
             counts[result] += 1
             if i % 5000 == 0 or i == len(tasks):
-                print(f"  {i}/{len(tasks)} | ok {counts['ok']} | skipped {counts['skipped']} "
-                      f"| failed {counts['failed']}")
+                print(
+                    f"  {i}/{len(tasks)} | ok {counts['ok']} | skipped {counts['skipped']} "
+                    f"| failed {counts['failed']}"
+                )
 
     print(f"Done. Resized images are in {args.dst}")
 

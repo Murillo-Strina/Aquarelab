@@ -6,23 +6,34 @@ from PIL import Image, UnidentifiedImageError
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
-from aquarelab.constants import GRAYSCALE_MODES, IMAGE_EXTENSIONS
+from aquarelab.constants import GRAYSCALE_MODES, IMAGE_EXTENSIONS, INDEX_NAME
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
 IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
 
 def find_images(
-    root: str | Path, skip_grayscale: bool = True, max_images: int | None = None
+    root: str | Path,
+    skip_grayscale: bool = True,
+    max_images: int | None = None,
+    use_index: bool = True,
 ) -> list[Path]:
     """
-    List image files under root, recursively, sorted so the order is reproducible.
+    List color image files under root, recursively, sorted so the order is reproducible.
 
     Grayscale and unreadable files are skipped, since v1 only handles color input.
-    Only the file header is read, so scanning a large folder stays fast.
+    Checking every file is slow on large folders, so after a full scan the list is
+    saved to root/.color_images.txt and reused on the next run. Delete that file
+    to force a new scan after adding or removing images.
     """
+    root = Path(root)
+    index = root / INDEX_NAME
+    if skip_grayscale and use_index and index.exists():
+        paths = [root / line for line in index.read_text().splitlines() if line]
+        return paths[:max_images] if max_images is not None else paths
+
     candidates = sorted(
-        p for p in Path(root).rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS
+        p for p in root.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS
     )
     kept = []
     for path in candidates:
@@ -35,6 +46,12 @@ def find_images(
         except (UnidentifiedImageError, OSError):
             continue
         kept.append(path)
+
+    if skip_grayscale and use_index and max_images is None:
+        try:
+            index.write_text("\n".join(p.relative_to(root).as_posix() for p in kept))
+        except OSError:
+            pass
     return kept
 
 
@@ -49,22 +66,30 @@ class ImageFolderDataset(Dataset):
         skip_grayscale: bool = True,
         max_images: int | None = None,
     ):
-        self.paths = find_images(root, skip_grayscale=skip_grayscale, max_images=max_images)
+        self.paths = find_images(
+            root, skip_grayscale=skip_grayscale, max_images=max_images
+        )
         if not self.paths:
             raise ValueError(f"No color images found in {root}")
 
         if train:
-            self.transform = transforms.Compose([
-                transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), antialias=True),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-            ])
+            self.transform = transforms.Compose(
+                [
+                    transforms.RandomResizedCrop(
+                        image_size, scale=(0.5, 1.0), antialias=True
+                    ),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                ]
+            )
         else:
-            self.transform = transforms.Compose([
-                transforms.Resize(image_size, antialias=True),
-                transforms.CenterCrop(image_size),
-                transforms.ToTensor(),
-            ])
+            self.transform = transforms.Compose(
+                [
+                    transforms.Resize(image_size, antialias=True),
+                    transforms.CenterCrop(image_size),
+                    transforms.ToTensor(),
+                ]
+            )
 
     def __len__(self) -> int:
         return len(self.paths)

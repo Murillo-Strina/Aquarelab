@@ -44,7 +44,8 @@ def test_usage_floor_penalizes_only_dead_tones():
     weights[:, 1] = 0.3
     weights[:, 2] = 0.1  # all above the floor
     assert usage_floor_loss(weights, min_usage=0.02) == 0
-    
+
+
 def test_usage_floor_is_computed_over_the_batch():
     weights = torch.zeros(2, 2, 4, 4)
     weights[0, 0] = 1.0  # image 0 uses only tone 0
