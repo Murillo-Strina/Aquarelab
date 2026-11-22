@@ -58,3 +58,15 @@ def test_prepare_batch_shapes_and_lab_range():
     net_input, lab = prepare_batch(rgb)
     assert net_input.shape == lab.shape == (2, 3, 16, 16)
     assert lab[:, 0].min() >= 0 and lab[:, 0].max() <= 100  # L channel
+
+
+def test_full_scan_writes_an_index_that_is_reused(image_folder):
+    first = find_images(image_folder)
+    assert (image_folder / ".color_images.txt").exists()
+    (image_folder / "gray.jpg").unlink()
+    assert find_images(image_folder) == first
+
+
+def test_partial_scan_does_not_write_an_index(image_folder):
+    find_images(image_folder, max_images=2)
+    assert not (image_folder / ".color_images.txt").exists()
